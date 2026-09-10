@@ -809,6 +809,13 @@ function archiveRelationship(effect, reason='beëindigd'){
 function removeActiveEffect(index, reason='handmatig gestopt'){
   const effect=state.active.splice(index,1)[0];
   if(!effect) return null;
+  if(effect.type==='inactive'){
+    const members=effect.memberIndexes||state.players.map((p,i)=>p.name===effect.players?i:-1).filter(i=>i>=0);
+    members.forEach(i=>{
+      const remaining=state.active.filter(a=>a.type==='inactive'&&((a.memberIndexes||[]).includes(i)||a.players===playerName(i)));
+      state.players[i].inactiveUntil=remaining.length?Math.max(...remaining.map(a=>state.round+Math.max(0,(a.roundsRemaining||1)-1))):0;
+    });
+  }
   const timer=RUNTIME_EFFECT_TIMERS.get(effect.uid); if(timer){ clearTimeout(timer); RUNTIME_EFFECT_TIMERS.delete(effect.uid); }
   archiveRelationship(effect,reason);
   log('Actief effect verwijderd: '+effect.title);
@@ -1227,6 +1234,7 @@ function playHandCard(playerIdx,handIdx,root){
       const candidates=otherPlayerIndexes(members);
       if(!candidates.length) return alert('Iedere beschikbare speler zit al in deze relatie.');
       modal.innerHTML=`<div><div class="eyebrow">Derde Wiel</div><h2>Welke speler kies je?</h2><div class="player-pick">${playerRadioHtml('third',candidates)}</div><div class="row"><button id="third-confirm" class="primary">Toevoegen</button><button data-close class="soft">Annuleren</button></div></div>`;
+      modal.querySelector('[data-close]').onclick=()=>{ modal.innerHTML=''; renderGame(); };
       modal.querySelector('#third-confirm').onclick=()=>{ const third=checkedRadio(modal,'third'); if(third==null) return alert('Kies eerst een speler.'); relation.memberIndexes=[...members,third]; relation.players=[...members,third].map(playerName).join(' & '); relation.note=(relation.note?relation.note+' · ':'')+playerName(third)+' doet voortaan mee'; done(playerName(third)+' toegevoegd aan '+relation.title); };
     });
     case 'SP02': state.direction*=-1; return done('speelrichting omgedraaid naar '+(state.direction===1?'rechtsom':'linksom'));
@@ -1267,12 +1275,13 @@ function playHandCard(playerIdx,handIdx,root){
       state.active.filter(a=>a.type==='relationship').forEach(a=>archiveRelationship(a,'stroom uitgevallen'));
       RUNTIME_EFFECT_TIMERS.forEach(timer=>clearTimeout(timer)); RUNTIME_EFFECT_TIMERS.clear();
       state.active=[];
+      state.players.forEach(player=>{ player.inactiveUntil=0; });
       return done(count+' actieve effect'+(count===1?'':'en')+' verwijderd');
     }
     case 'SP18': addActiveEffect({cardId:card.id,title:card.title,type:'groupShield',players:'Hele groep',note:'Deze ronde neemt niemand gewone slokken',roundsRemaining:1}); return done('groep beschermd voor deze ronde');
     case 'SP19': return handNumberInput(card,'Zet maar op de bon','Hoeveel gewone slokken stel je 3 rondes uit?',{min:1,max:30},(amount,modal)=>{ state.bills.push({uid:'bill-'+Date.now(),player:p.name,playerIdx,amount,sips:amount,roundsRemaining:3}); addCurrentSpecialNote(p.name+' zet '+amount+' slokken 3 rondes op de bon'); finishHandPlay(playerIdx,handIdx,modal,amount+' slokken op de bon'); });
     case 'SP20': return chooseActiveEffect(card.title,a=>a.type==='penalty'||a.type==='task','Welke straf of opdracht fluit Ronald af?',(activeIdx,modal)=>{ const stopped=removeActiveEffect(activeIdx,'afgefloten'); finishHandPlay(playerIdx,handIdx,modal,(stopped?stopped.title:'effect')+' beëindigd'); });
-    case 'SP21': p.inactiveUntil=Math.max(p.inactiveUntil||0,state.round+2); addActiveEffect({cardId:card.id,title:card.title,type:'inactive',players:p.name,note:'Doet 2 rondes niet mee en kan niet gericht gekozen worden',roundsRemaining:2}); return done('2 rondes inactief');
+    case 'SP21': p.inactiveUntil=Math.max(p.inactiveUntil||0,state.round+1); addActiveEffect({cardId:card.id,title:card.title,type:'inactive',players:p.name,memberIndexes:[playerIdx],note:'Doet 2 rondes niet mee en kan niet gericht gekozen worden',roundsRemaining:2}); return done('2 rondes inactief');
     case 'SP22': return handNumberInput(card,'Ik moet nog rijden','Hoeveel gewone slokken kreeg je?',{min:1,max:30},(amount,modal)=>{ const half=Math.floor(amount/2); addCurrentSpecialNote(p.name+': '+amount+' wordt '+half); finishHandPlay(playerIdx,handIdx,modal,amount+' wordt '+half); });
     case 'SP24': {
       const targets=state.players.map((pl,i)=>({pl,i})).filter(x=>x.i!==playerIdx&&x.pl.hand.length).map(x=>x.i);
@@ -1336,7 +1345,7 @@ function drawCard(){
   state.draws++;
   if(card.save){
     state.players[state.turn].hand.push(card);
-    log(`${state.players[state.turn].name} trok een geheime kaart: ${card.title}.`);
+    log(`${state.players[state.turn].name} trok een geheime kaart.`);
     saveState();
     openPrivacy(state.turn, ()=> openModal(`<div class="center"><div class="eyebrow">Nieuwe geheime kaart</div><h2>${escapeHtml(card.title)}</h2><p>${formatCardText(card.text)}</p><button data-close class="primary">Sluiten</button></div>`, ()=>{ advanceTurn(); renderGame(); }));
   } else {
