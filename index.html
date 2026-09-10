@@ -317,7 +317,7 @@ addCard('B06','Vingerduel','Battle','De trekker telt af: 3, 2, 1. Iedereen steek
 addCard('B07','Verboden 7','Battle','Tel om de beurt op. Getal 7 en de tafel van 7 mogen niet gezegd worden. Eerste fout: 2 slokken.',4);
 addCard('B08','Onderwerp naar keuze','Battle','Kies een onderwerp. Noem om de beurt iets dat daarbij hoort. Fout, herhaling of te laat = 1 slok.',4);
 addCard('B11','Ronald denkt dat die meer heeft','Battle','Ronald kiest willekeurig een speler. Heeft die meer in het drankje dan jij? Dan neemt die 2 slokken. Anders neem jij 1 slok.',1);
-addCard('B12','Ronald vergelijkt de glazen','Battle','Ronald kiest willekeurig een speler. Heeft die meer in het drankje dan jij? Dan neemt die 2 slokken. Anders neem jij 1 slok.',1);
+addCard('B12','Ronald vergelijkt de glazen','Battle','Ronald kiest willekeurig een speler. Heeft die minder in het drankje dan jij? Dan neemt die 2 slokken. Anders neem jij 1 slok.',1);
 addCard('B13','Iedereen wijst','Battle','Iedereen wijst tegelijk iemand aan. De speler met de meeste stemmen neemt 2 slokken.',4);
 addCard('B14','Drie seconden','Battle','De speler die deze kaart trekt heeft 3 seconden om zijn glas leeg te drinken. Lukt het niet? Dan krijgt de trekker 1 slok.',2);
 addCard('NB01','Eenentwintig','Battle','Druk per beurt 1, 2 of 3 keer op het scherm. De totaalstand blijft geheim. Wie de 21e druk doet, verliest en neemt 2 slokken.',2);
@@ -930,14 +930,24 @@ function runCurrentCardAction(card){
   if(String(card.id).startsWith('MLT')) return runMostLikelyAction(card);
   switch(card.id){
     case 'B02': return currentManyPlayers(card.title,'Welke 2 spelers kies je?',{exclude:[drawer],min:2,max:2},(picked,root)=>{
-      const battles=['Armpje drukken','Steen-papier-schaar','Best of Three','Vingerduel','Kop of munt duel'];
-      completeCurrentModal(root,playerName(picked[0])+' tegen '+playerName(picked[1])+' · '+choice(battles));
+      const battle=choice(['B01','B03','B04','B06','NB05'].map(id=>CARD_DEFS.find(c=>c.id===id)));
+      const names=playerName(picked[0])+' tegen '+playerName(picked[1]);
+      const rules=battle.text.replace('Kies een tegenstander. ','').replace('Iedereen steekt','Beide spelers steken');
+      root.innerHTML=`<div class="center"><div class="eyebrow">Ronald kiest het gevecht</div><h2>${escapeHtml(battle.title)}</h2><div class="action-result">${escapeHtml(names)}</div><p>${escapeHtml(rules)}</p>${battle.id==='NB05'?'<button id="battle-coin" class="primary">Gooi de munt</button><div id="battle-coin-result" class="action-result"></div>':''}<button id="battle-done" class="primary" ${battle.id==='NB05'?'disabled':''}>Uitgevoerd</button></div>`;
+      let result='';
+      if(battle.id==='NB05') root.querySelector('#battle-coin').onclick=()=>{
+        result=Math.random()<.5?'Kop':'Munt';
+        root.querySelector('#battle-coin-result').textContent=result+' · de speler die anders koos neemt 1 slok';
+        root.querySelector('#battle-coin').disabled=true;
+        root.querySelector('#battle-done').disabled=false;
+      };
+      root.querySelector('#battle-done').onclick=()=>completeCurrentModal(root,names+' · '+battle.title+' · '+rules+(result?' · Uitkomst: '+result:''));
     });
     case 'B11': case 'B12': {
       const eligible=otherPlayerIndexes([drawer]);
       if(!eligible.length){ markCurrentActionDone('geen geldige andere speler'); renderGame(); return; }
-      const target=choice(eligible);
-      const root=openModal(`<div class="center"><div class="eyebrow">Ronald kiest</div><h2>${escapeHtml(playerName(target))}</h2><p>Heeft ${escapeHtml(playerName(target))} meer in het drankje dan ${escapeHtml(drawerName)}?</p><div class="choice-grid"><button id="more-yes" class="primary">Ja · ${escapeHtml(playerName(target))} 2 slokken</button><button id="more-no" class="soft">Nee · ${escapeHtml(drawerName)} 1 slok</button></div><button data-close class="soft">Annuleren</button></div>`);
+      const target=choice(eligible), comparison=card.id==='B12'?'minder':'meer';
+      const root=openModal(`<div class="center"><div class="eyebrow">Ronald kiest</div><h2>${escapeHtml(playerName(target))}</h2><p>Heeft ${escapeHtml(playerName(target))} ${comparison} in het drankje dan ${escapeHtml(drawerName)}?</p><div class="choice-grid"><button id="more-yes" class="primary">Ja · ${escapeHtml(playerName(target))} 2 slokken</button><button id="more-no" class="soft">Nee · ${escapeHtml(drawerName)} 1 slok</button></div><button data-close class="soft">Annuleren</button></div>`);
       root.querySelector('#more-yes').onclick=()=>completeCurrentModal(root,playerName(target)+' neemt 2 slokken');
       root.querySelector('#more-no').onclick=()=>completeCurrentModal(root,drawerName+' neemt 1 slok');
       return;
@@ -1056,7 +1066,7 @@ function startHiddenTwentyOne(card){
   const root=openModal(`<div><div class="eyebrow">Verborgen teller tot 21</div><div id="tap-owner" class="mini-player-banner"></div><div class="tap-stage"><div id="tap-plus" class="tap-feedback">+1</div><button id="tap-button" class="twenty-button">DRUK</button><p class="small center">De totaalstand blijft geheim.</p></div><div id="tap-controls"></div></div>`);
   const owner=root.querySelector('#tap-owner'), plus=root.querySelector('#tap-plus'), button=root.querySelector('#tap-button'), controls=root.querySelector('#tap-controls');
   function turn(){ presses=0; button.disabled=false; owner.textContent=order[pos].name+' is aan de beurt'; controls.innerHTML='<div class="small center">Druk 1, 2 of 3 keer.</div>'; }
-  function controlsRender(){ const next=order[(pos+1)%order.length].name; controls.innerHTML=`<div class="small center">Deze beurt: ${presses}</div><button id="tap-pass" class="primary">Geef door aan ${escapeHtml(next)}</button>`; controls.querySelector('#tap-pass').onclick=()=>{ pos=(pos+1)%order.length; turn(); }; }
+  function controlsRender(){ const next=order[(pos+1)%order.length].name; controls.innerHTML=`<button id="tap-pass" class="primary">Geef door aan ${escapeHtml(next)}</button>`; controls.querySelector('#tap-pass').onclick=()=>{ pos=(pos+1)%order.length; turn(); }; }
   button.onclick=()=>{
     if(finished||presses>=3) return;
     hidden++; presses++;
