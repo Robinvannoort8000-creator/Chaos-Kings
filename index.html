@@ -701,8 +701,12 @@ function renderGame(){
   state.active.forEach((a,idx)=>{
     const d=document.createElement('div'); d.className='item';
     const meta=activeMeta(a);
-    d.innerHTML = `<h4>${escapeHtml(a.title)}</h4><div class="small">${escapeHtml(a.players||'Hele groep')}</div>${meta?`<div class="action-pill">${escapeHtml(meta)}</div>`:''}<div>${escapeHtml(a.note||'')}</div><div class="row" style="margin-top:8px"><button class="soft" data-remove-active="${idx}">Verwijderen</button></div>`;
+    d.innerHTML = `<h4>${escapeHtml(a.title)}</h4><div class="small">${escapeHtml(a.players||'Hele groep')}</div>${meta?`<div class="action-pill">${escapeHtml(meta)}</div>`:''}<div>${escapeHtml(publicActiveNote(a))}</div><div class="row" style="margin-top:8px"><button class="soft" data-remove-active="${idx}">Verwijderen</button></div>`;
     active.appendChild(d);
+    if(a.cardId==='ST06'&&a.dueAt&&a.dueAt<=Date.now()){
+      const finish=document.createElement('button'); finish.className='primary'; finish.textContent='Opdracht afronden';
+      finish.onclick=()=>finishTimedTask(a); d.appendChild(finish);
+    }
   });
   state.bills.forEach(b=>{
     const d=document.createElement('div'); d.className='item';
@@ -821,6 +825,9 @@ function removeActiveEffect(index, reason='handmatig gestopt'){
   log('Actief effect verwijderd: '+effect.title);
   saveState();
   return effect;
+}
+function publicActiveNote(effect){
+  return effect.cardId==='ST06'?'Geheime opdracht · de inhoud blijft privé':(effect.note||'');
 }
 function activeMeta(effect){
   const bits=[];
@@ -1119,8 +1126,24 @@ const RUNTIME_EFFECT_TIMERS=new Map();
 function scheduleEffectAlarm(effect){
   if(!effect||!effect.dueAt||RUNTIME_EFFECT_TIMERS.has(effect.uid)) return;
   const wait=Math.max(0,effect.dueAt-Date.now());
-  const timer=setTimeout(()=>{ RUNTIME_EFFECT_TIMERS.delete(effect.uid); playAlarm(); const idx=state.active.findIndex(a=>a.uid===effect.uid); if(idx<0) return; const root=openModal(`<div class="center"><div class="eyebrow">Geheime opdracht</div><h2>Tijd is voorbij</h2><p>${escapeHtml(effect.players)} · ${escapeHtml(effect.note||'')}</p><div class="choice-grid"><button id="task-ok" class="good">Geslaagd</button><button id="task-fail" class="bad">Mislukt · 2 slokken</button></div></div>`); root.querySelector('#task-ok').onclick=()=>{ const live=state.active.findIndex(a=>a.uid===effect.uid); if(live>=0) removeActiveEffect(live,'geslaagd'); root.innerHTML=''; renderGame(); }; root.querySelector('#task-fail').onclick=()=>{ const live=state.active.findIndex(a=>a.uid===effect.uid); if(live>=0) removeActiveEffect(live,'mislukt · 2 slokken'); root.innerHTML=''; renderGame(); }; },wait);
+  const timer=setTimeout(()=>{
+    const idx=state.active.findIndex(a=>a.uid===effect.uid);
+    if(idx<0){ RUNTIME_EFFECT_TIMERS.delete(effect.uid); return; }
+    playAlarm();
+    finishTimedTask(effect);
+  },wait);
   RUNTIME_EFFECT_TIMERS.set(effect.uid,timer);
+}
+function finishTimedTask(effect){
+    if(!state.active.some(a=>a.uid===effect.uid)) return;
+    const root=openModal(`<div class="center"><div class="eyebrow">Geheime opdracht</div><h2>Tijd is voorbij</h2><p>${escapeHtml(effect.players)}: is de geheime opdracht gelukt?</p><div class="choice-grid"><button id="task-ok" class="good">Geslaagd</button><button id="task-fail" class="bad">Mislukt · 2 slokken</button></div></div>`);
+    const finish=result=>{
+      const live=state.active.findIndex(a=>a.uid===effect.uid);
+      if(live>=0){ log(effect.players+' · geheime opdracht '+result); removeActiveEffect(live,result); }
+      root.innerHTML=''; renderGame();
+    };
+    root.querySelector('#task-ok').onclick=()=>finish('geslaagd');
+    root.querySelector('#task-fail').onclick=()=>finish('mislukt · 2 slokken');
 }
 function startSecretTask(card){
   const drawer=state.turn, eligible=otherPlayerIndexes([drawer]);
