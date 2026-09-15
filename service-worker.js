@@ -1,4 +1,4 @@
-const CACHE_NAME = 'chaos-kings-v1.10.0';
+const CACHE_NAME = 'chaos-kings-v1.11.0';
 const APP_SHELL = [
   './',
   './index.html',
