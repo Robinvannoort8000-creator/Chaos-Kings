@@ -21,7 +21,7 @@ assert.equal(rules.blackjackReward(hand([10,5,5],{doubled:true}),cards(10,9)),4)
 assert.equal(rules.blackjackReward(hand([10,10]),cards(10,10)),0);
 assert.equal(rules.blackjackReward(hand([10,10,5]),cards(10,10,5)),0);
 assert.equal(rules.blackjackReward(hand([10,8]),cards(10,10,5)),2);
-for(let n=2;n<=100;n++){const c=rules.mineConfig(n);assert(c.mines>=n-1);assert(c.mines<c.side*c.side);}
+for(let n=2;n<=100;n++){const c=rules.mineConfig(n);assert.equal(c.mines,20);assert.equal(c.side,10);assert(c.mines<c.side*c.side);}
 assert.equal(rules.mineNeighbours(0,4,new Set([1,4,5,15])),3);
 assert.equal(rules.mineNeighbours(3,4,new Set([4])),0);
 assert.equal(rules.stackOverlap(14,72,90,72).width,0);assert.equal(rules.stackOverlap(14,72,20,72).width,66);
@@ -36,7 +36,13 @@ function run(name,players=['A','B'],options={}){
 }
 let t=run('startRoulette',['A','B'],{random:7});for(let p=0;p<2;p++){for(let i=0;i<3;i++)t.pick('data-bet',7);t.click('roulette-confirm');}t.click('roulette-spin');t.flush();assert.match(t.ui.result,/11 slokken/);t.click('batch-finish');assert.match(t.summary,/Nummer 7/);
 t=run('startPenalties');t.pick('data-shot',0);t.flush();assert.match(t.ui.result,/redt/);t.click('penalty-next');t.pick('data-shot',2);t.flush();assert.match(t.ui.result,/Doelpunt/);t.click('batch-finish');assert.match(t.summary,/A: gered.*B: doelpunt/);
-t=run('startMines',['A','B','C']);t.pick('data-cell',0);assert.match(t.ui.result,/A.*uitgeschakeld/);t.click('mine-next');assert.match(t.ui.banner.textContent,/B/);t.pick('data-cell',3);t.click('mine-next');assert.match(t.ui.banner.textContent,/C/);t.pick('data-cell',1);assert.match(t.ui.banner.textContent,/B wint/);t.click('batch-finish');assert.match(t.summary,/A, C/);
+const floodOpened=new Set(),floodFlags=new Set([8]);rules.mineFlood(0,3,new Set([2]),floodOpened,floodFlags);assert(!floodOpened.has(2));assert(!floodOpened.has(8));assert(floodOpened.has(0));assert(floodOpened.has(3));
+t=run('startMines',['A','B','C'],{shuffle:a=>[...a].sort((a,b)=>(a*37%101)-(b*37%101))});
+const initialBanner=t.ui.banner.textContent;
+let closed=[...t.ui.stage.innerHTML.matchAll(/data-cell="(\d+)" aria-label="Vak \d+"/g)].map(m=>Number(m[1]));assert(closed.length>20);assert(closed.length<100);
+t.pick('data-mode','flag');t.pick('data-cell',closed[0]);assert.match(t.ui.stage.innerHTML,/ vlag"/);assert.match(t.ui.banner.textContent,/A/);
+t.pick('data-mode','open');const prior=t.ui.stage.innerHTML;t.pick('data-cell',closed[0]);assert.equal(t.ui.stage.innerHTML,prior);
+t.pick('data-mode','flag');t.pick('data-cell',closed[0]);t.pick('data-mode','open');t.pick('data-cell',closed[0]);t.click('mine-next');assert.match(t.ui.banner.textContent,/B/);
 // A known card sequence exercises splitting, doubling and shared dealer revelation.
 const seq=[10,7,8,8,10,9,3,2,10,10].map(rank=>({rank,suit:'♠'}));
 t=run('startBlackjack',['A','B'],{shuffle:()=>[...seq].reverse()});assert.match(t.ui.stage.innerHTML,/Verborgen kaart/);t.click('bj-split');t.click('bj-double');t.click('bj-next');t.click('bj-hit');t.click('bj-stand');t.click('bj-ready');t.click('bj-stand');t.click('bj-reveal');assert.match(t.ui.result,/A: 6 slokken/);assert.match(t.ui.result,/B: 2 slokken/);t.click('batch-finish');assert.match(t.summary,/A: 6/);
